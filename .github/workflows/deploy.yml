@@ -24,3 +24,25 @@ jobs:
 
       - name: Push imagen frontend
         run: docker push ${{ secrets.DOCKERHUB_USERNAME }}/despacho-frontend:latest
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy frontend en EC2 Web
+        run: |
+          aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_WEB_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy frontend desde GitHub Actions" \
+            --parameters 'commands=[
+              "docker pull ${{ secrets.DOCKERHUB_USERNAME }}/despacho-frontend:latest",
+              "docker stop frontend-despacho || true",
+              "docker rm frontend-despacho || true",
+              "docker run -d --name frontend-despacho -p 80:80 ${{ secrets.DOCKERHUB_USERNAME }}/despacho-frontend:latest",
+              "docker ps"
+            ]'
