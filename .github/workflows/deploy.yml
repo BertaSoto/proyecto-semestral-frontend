@@ -1,0 +1,48 @@
+name: Build Push Deploy Frontend
+
+on:
+  push:
+    branches:
+      - deploy
+
+jobs:
+  build-push-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout codigo
+        uses: actions/checkout@v4
+
+      - name: Login Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build imagen frontend
+        run: docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/despacho-frontend:latest .
+
+      - name: Push imagen frontend
+        run: docker push ${{ secrets.DOCKERHUB_USERNAME }}/despacho-frontend:latest
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy frontend en EC2 Web
+        run: |
+          aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_WEB_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy frontend desde GitHub Actions" \
+            --parameters 'commands=[
+              "docker pull ${{ secrets.DOCKERHUB_USERNAME }}/despacho-frontend:latest",
+              "docker stop frontend-despacho || true",
+              "docker rm frontend-despacho || true",
+              "docker run -d --name frontend-despacho -p 80:80 ${{ secrets.DOCKERHUB_USERNAME }}/despacho-frontend:latest",
+              "docker ps"
+            ]'
